@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rover Control</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #1a1a1a;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        header {
+            background: #2a2a2a;
+            padding: 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid #3a3a3a;
+        }
+
+        h1 {
+            font-size: 1.5rem;
+            color: #00ff88;
+        }
+
+        .status {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #888;
+        }
+
+        .status-indicator.connected {
+            background: #00ff88;
+            box-shadow: 0 0 10px #00ff88;
+        }
+
+        .status-indicator.faulted {
+            background: #ff3366;
+            box-shadow: 0 0 10px #ff3366;
+        }
+
+        main {
+            flex: 1;
+            display: flex;
+            gap: 1rem;
+            padding: 1rem;
+            overflow: hidden;
+        }
+
+        .video-panel {
+            flex: 2;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .video-container {
+            flex: 1;
+            background: #000;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            position: relative;
+        }
+
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .video-placeholder {
+            color: #666;
+            font-size: 1.2rem;
+        }
+
+        .control-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            min-width: 320px;
+        }
+
+        .panel {
+            background: #2a2a2a;
+            border-radius: 8px;
+            padding: 1rem;
+        }
+
+        .panel h2 {
+            font-size: 1.2rem;
+            margin-bottom: 0.5rem;
+            color: #00ff88;
+        }
+
+        .joystick-area {
+            width: 200px;
+            height: 200px;
+            background: #1a1a1a;
+            border-radius: 50%;
+            margin: 1rem auto;
+            position: relative;
+            border: 2px solid #3a3a3a;
+        }
+
+        .joystick-stick {
+            width: 60px;
+            height: 60px;
+            background: #00ff88;
+            border-radius: 50%;
+            position: absolute;
+            top: 70px;
+            left: 70px;
+            cursor: grab;
+            box-shadow: 0 0 15px rgba(0, 255, 136, 0.5);
+        }
+
+        .joystick-stick:active {
+            cursor: grabbing;
+        }
+
+        .keyboard-hint {
+            text-align: center;
+            font-size: 0.9rem;
+            color: #888;
+            margin-top: 0.5rem;
+        }
+
+        .stop-button {
+            width: 100%;
+            padding: 1.5rem;
+            font-size: 1.5rem;
+            font-weight: bold;
+            background: #ff3366;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .stop-button:hover {
+            background: #ff4477;
+            box-shadow: 0 0 20px rgba(255, 51, 102, 0.5);
+        }
+
+        .stop-button:active {
+            transform: scale(0.95);
+        }
+
+        .telemetry-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.5rem;
+            font-size: 0.9rem;
+        }
+
+        .telemetry-item {
+            padding: 0.5rem;
+            background: #1a1a1a;
+            border-radius: 4px;
+        }
+
+        .telemetry-label {
+            color: #888;
+            font-size: 0.8rem;
+        }
+
+        .telemetry-value {
+            font-weight: bold;
+            margin-top: 0.25rem;
+        }
+
+        .fault-indicator {
+            padding: 0.5rem;
+            background: #ff3366;
+            border-radius: 4px;
+            margin-top: 0.5rem;
+            font-weight: bold;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>🤖 Rover Control</h1>
+        <div class="status">
+            <span id="statusText">Disconnected</span>
+            <div id="statusIndicator" class="status-indicator"></div>
+        </div>
+    </header>
+
+    <main>
+        <div class="video-panel">
+            <div class="video-container">
+                <video id="videoElement" autoplay playsinline></video>
+                <div id="videoPlaceholder" class="video-placeholder">Waiting for video...</div>
+            </div>
+        </div>
+
+        <div class="control-panel">
+            <div class="panel">
+                <h2>Control</h2>
+                <div class="joystick-area" id="joystickArea">
+                    <div class="joystick-stick" id="joystickStick"></div>
+                </div>
+                <div class="keyboard-hint">Use WASD or Arrow keys</div>
+            </div>
+
+            <div class="panel">
+                <button class="stop-button" id="stopButton">⚠ EMERGENCY STOP</button>
+            </div>
+
+            <div class="panel">
+                <h2>Telemetry</h2>
+                <div class="telemetry-grid" id="telemetryGrid">
+                    <div class="telemetry-item">
+                        <div class="telemetry-label">Left Motor</div>
+                        <div class="telemetry-value" id="leftMotor">--</div>
+                    </div>
+                    <div class="telemetry-item">
+                        <div class="telemetry-label">Right Motor</div>
+                        <div class="telemetry-value" id="rightMotor">--</div>
+                    </div>
+                    <div class="telemetry-item">
+                        <div class="telemetry-label">Voltage</div>
+                        <div class="telemetry-value" id="voltage">--</div>
+                    </div>
+                    <div class="telemetry-item">
+                        <div class="telemetry-label">Command Age</div>
+                        <div class="telemetry-value" id="cmdAge">--</div>
+                    </div>
+                </div>
+                <div id="faultIndicator" style="display: none;" class="fault-indicator">
+                    ⚠ FAULT ACTIVE
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // WebSocket connection
+        let ws = null;
+        let peerConnection = null;
+
+        // Control state
+        let throttle = 0;
+        let turn = 0;
+        let isEstop = false;
+
+        // Connect to WebSocket
+        function connect() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws`;
+            
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                console.log('WebSocket connected');
+                updateStatus('connected', 'Connected');
+                
+                // Request WebRTC offer
+                ws.send(JSON.stringify({ type: 'webrtc_request' }));
+            };
+
+            ws.onmessage = async (event) => {
+                const message = JSON.parse(event.data);
+                
+                if (message.type === 'telemetry') {
+                    updateTelemetry(message.data);
+                } else if (message.type === 'webrtc_offer') {
+                    await handleWebRTCOffer(message);
+                }
+            };
+
+            ws.onclose = () => {
+                console.log('WebSocket disconnected');
+                updateStatus('disconnected', 'Disconnected');
+                setTimeout(connect, 2000);
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+            };
+        }
+
+        // Handle WebRTC offer
+        async function handleWebRTCOffer(message) {
+            peerConnection = new RTCPeerConnection({
+                iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+            });
+
+            peerConnection.ontrack = (event) => {
+                console.log('Received video track');
+                const videoElement = document.getElementById('videoElement');
+                videoElement.srcObject = event.streams[0];
+                document.getElementById('videoPlaceholder').style.display = 'none';
+            };
+
+            // Set remote description
+            await peerConnection.setRemoteDescription({
+                type: message.sdpType,
+                sdp: message.sdp
+            });
+
+            // Create answer
+            const answer = await peerConnection.createAnswer();
+            await peerConnection.setLocalDescription(answer);
+
+            // Send answer to server
+            ws.send(JSON.stringify({
+                type: 'webrtc_answer',
+                sdp: answer.sdp,
+                sdpType: answer.type
+            }));
+        }
+
+        // Update status indicator
+        function updateStatus(state, text) {
+            const indicator = document.getElementById('statusIndicator');
+            const statusText = document.getElementById('statusText');
+            
+            indicator.className = 'status-indicator ' + state;
+            statusText.textContent = text;
+        }
+
+        // Update telemetry display
+        function updateTelemetry(data) {
+            document.getElementById('leftMotor').textContent = `${(data.left_pwm / 100).toFixed(1)}%`;
+            document.getElementById('rightMotor').textContent = `${(data.right_pwm / 100).toFixed(1)}%`;
+            document.getElementById('voltage').textContent = `${(data.bus_voltage_mv / 1000).toFixed(2)}V`;
+            document.getElementById('cmdAge').textContent = `${data.age_ms}ms`;
+
+            // Show fault indicator if faults present
+            const faultIndicator = document.getElementById('faultIndicator');
+            if (data.fault_flags !== 0) {
+                faultIndicator.style.display = 'block';
+                updateStatus('faulted', 'Faulted');
+            } else {
+                faultIndicator.style.display = 'none';
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    updateStatus('connected', 'Connected');
+                }
+            }
+        }
+
+        // Send control command
+        function sendControl() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'teleop',
+                    throttle: throttle,
+                    turn: turn,
+                    estop: isEstop
+                }));
+            }
+        }
+
+        // Joystick control
+        const joystickArea = document.getElementById('joystickArea');
+        const joystickStick = document.getElementById('joystickStick');
+        let isDragging = false;
+
+        function updateJoystick(x, y) {
+            const rect = joystickArea.getBoundingClientRect();
+            const centerX = rect.width / 2;
+            const centerY = rect.height / 2;
+            
+            let dx = x - centerX;
+            let dy = y - centerY;
+            
+            const maxRadius = centerX - 30;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distance > maxRadius) {
+                dx = dx * maxRadius / distance;
+                dy = dy * maxRadius / distance;
+            }
+            
+            joystickStick.style.left = (centerX + dx - 30) + 'px';
+            joystickStick.style.top = (centerY + dy - 30) + 'px';
+            
+            throttle = -dy / maxRadius;
+            turn = dx / maxRadius;
+            
+            sendControl();
+        }
+
+        joystickStick.addEventListener('mousedown', () => isDragging = true);
+        document.addEventListener('mouseup', () => {
+            if (isDragging) {
+                isDragging = false;
+                joystickStick.style.left = '70px';
+                joystickStick.style.top = '70px';
+                throttle = 0;
+                turn = 0;
+                sendControl();
+            }
+        });
+
+        joystickArea.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                const rect = joystickArea.getBoundingClientRect();
+                updateJoystick(e.clientX - rect.left, e.clientY - rect.top);
+            }
+        });
+
+        // Keyboard control
+        const keys = {};
+        document.addEventListener('keydown', (e) => {
+            keys[e.key] = true;
+            updateKeyboardControl();
+        });
+
+        document.addEventListener('keyup', (e) => {
+            keys[e.key] = false;
+            updateKeyboardControl();
+        });
+
+        function updateKeyboardControl() {
+            let kbThrottle = 0;
+            let kbTurn = 0;
+
+            if (keys['w'] || keys['W'] || keys['ArrowUp']) kbThrottle += 1;
+            if (keys['s'] || keys['S'] || keys['ArrowDown']) kbThrottle -= 1;
+            if (keys['a'] || keys['A'] || keys['ArrowLeft']) kbTurn -= 1;
+            if (keys['d'] || keys['D'] || keys['ArrowRight']) kbTurn += 1;
+
+            if (kbThrottle !== 0 || kbTurn !== 0) {
+                throttle = kbThrottle;
+                turn = kbTurn;
+                sendControl();
+            }
+        }
+
+        // Emergency stop button
+        document.getElementById('stopButton').addEventListener('click', () => {
+            isEstop = true;
+            throttle = 0;
+            turn = 0;
+            sendControl();
+            
+            setTimeout(() => {
+                isEstop = false;
+            }, 100);
+        });
+
+        // Initialize
+        connect();
+
+        // Send control updates at 20 Hz
+        setInterval(() => {
+            if (!isDragging && Object.keys(keys).length === 0) {
+                // Decay to zero if no input
+                throttle *= 0.9;
+                turn *= 0.9;
+                if (Math.abs(throttle) < 0.01) throttle = 0;
+                if (Math.abs(turn) < 0.01) turn = 0;
+            }
+            sendControl();
+        }, 50);
+    </script>
+</body>
+</html>
+

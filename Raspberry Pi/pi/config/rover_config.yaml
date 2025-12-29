@@ -1,0 +1,105 @@
+# Rover Configuration - Phase 1
+# Edit this file to match your hardware setup
+
+# System Identification
+system:
+  name: "Rover"
+  version: "1.0.0"
+  robot_id: "rover01"
+
+# UART Hardware Interface
+uart:
+  port: "/dev/serial0"  # Pi GPIO UART (or /dev/ttyAMA0, /dev/ttyUSB0)
+  baudrate: 115200
+  timeout_sec: 0.1
+  protocol_version: "v1_binary"  # or "v0_ascii" for debugging
+
+# Hardware Gateway Settings
+hardware_gateway:
+  command_rate_hz: 50  # Send commands at 50 Hz
+  telemetry_timeout_ms: 500  # Declare link lost if no telemetry
+  watchdog_mirror_ms: 200  # Match dsPIC watchdog timeout
+  max_command_age_ms: 100  # Don't send stale commands
+
+# Teleoperation Settings
+teleop:
+  max_speed: 1.0  # Maximum normalized speed
+  deadband: 0.05  # Input deadband (0-1)
+  slew_rate_per_sec: 2.0  # Software slew rate (change per second)
+  enable_deadman_switch: false  # Require hold-to-drive
+
+# Video Settings
+video:
+  camera_index: 0  # Picamera2 camera index
+  width: 640
+  height: 480
+  framerate: 30
+  codec: "h264"  # h264 or vp8
+  bitrate_kbps: 1000
+  enable_hardware_encode: true  # Use Pi hardware encoder if available
+
+# WebRTC Settings
+webrtc:
+  stun_servers:
+    - "stun:stun.l.google.com:19302"
+  ice_servers: []  # Add TURN servers if needed for NAT traversal
+
+# API Server Settings
+api_server:
+  host: "0.0.0.0"  # Listen on all interfaces
+  port: 8000
+  cors_origins:
+    - "http://localhost:3000"
+    - "http://rover.local:8000"
+  auth_token: "rover_secret_token_change_me"  # Simple shared secret
+  enable_auth: false  # Set true for production
+
+# Message Bus Settings
+bus:
+  type: "in_process"  # Simple in-process pub/sub for Phase 1
+  queue_size: 100
+
+# Logging Settings
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  format: "json"  # json or text
+  log_dir: "/var/log/rover"
+  max_log_size_mb: 100
+  backup_count: 5
+  enable_console: true
+  enable_file: true
+
+# Health Monitor Settings
+health:
+  check_interval_sec: 1.0
+  watchdog_timeout_sec: 5.0
+
+# Safety Settings
+safety:
+  enable_emergency_stop: true
+  auto_stop_on_fault: true
+  voltage_min_mv: 9000
+  voltage_max_mv: 13000
+
+# Phase 2+ Settings (Placeholders)
+encoders:
+  enabled: false
+  ticks_per_rev: 1024
+  wheel_diameter_m: 0.15
+  wheelbase_m: 0.4
+
+perception:
+  enabled: false
+  detection_model: "yolo-nano"
+  marker_type: "apriltag"  # apriltag or aruco
+  detection_rate_hz: 10
+
+navigation:
+  enabled: false
+
+# Development/Debug Settings
+debug:
+  enable_simulation: false  # Simulate hardware for testing
+  log_all_messages: false
+  save_video_frames: false
+

@@ -1,0 +1,48 @@
+# Rover Pi Software - Python Dependencies
+# Install with: pip install -r requirements.txt
+
+# Core Web Framework
+fastapi==0.108.0
+uvicorn[standard]==0.25.0
+websockets==12.0
+python-multipart==0.0.6
+
+# Data Validation
+pydantic==2.5.3
+pydantic-settings==2.1.0
+
+# Serial Communication
+pyserial==3.5
+
+# WebRTC Video
+aiortc==1.6.0
+av==11.0.0
+
+# Camera (Picamera2)
+# Note: Install via apt on Pi: sudo apt install python3-picamera2
+# picamera2  # System package, not in PyPI
+
+# Computer Vision (Phase 3)
+opencv-python==4.9.0.80
+# opencv-contrib-python==4.9.0.80  # For ArUco markers
+numpy==1.26.2
+
+# Logging and Configuration
+structlog==23.3.0
+pyyaml==6.0.1
+toml==0.10.2
+
+# Async utilities
+asyncio-mqtt==0.16.2  # Optional: for future MQTT integration
+aiofiles==23.2.1
+
+# Testing
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+
+# Development
+black==23.12.1
+flake8==7.0.0
+mypy==1.7.1
+
