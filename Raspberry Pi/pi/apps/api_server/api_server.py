@@ -29,6 +29,11 @@ from hardware_gateway.hardware_gateway import HardwareGateway
 from teleop.teleop_service import TeleopService
 from video_service.video_service import VideoService
 
+# Import motor controller backends
+from lib.motor.motor_controller import MotorController
+from motor_uart.uart_motor_controller import UartMotorController
+from motor_pi_pwm.pi_pwm_motor_controller import PiPwmMotorController
+
 logger = logging.getLogger(__name__)
 
 
@@ -40,7 +45,8 @@ class AppState:
     """Global application state"""
     def __init__(self):
         self.bus = get_message_bus()
-        self.hardware_gateway: Optional[HardwareGateway] = None
+        self.motor_controller: Optional[MotorController] = None
+        self.hardware_gateway: Optional[HardwareGateway] = None  # Keep for backward compat
         self.teleop_service: Optional[TeleopService] = None
         self.video_service: Optional[VideoService] = None
         self.websocket_connections: Dict[str, WebSocket] = {}
@@ -89,14 +95,42 @@ async def startup_event():
     with open('../../config/rover_config.yaml') as f:
         config = yaml.safe_load(f)
     
-    # Initialize services
-    app_state.hardware_gateway = HardwareGateway(
-        port=config['uart']['port'],
-        baudrate=config['uart']['baudrate'],
-        command_rate_hz=config['hardware_gateway']['command_rate_hz'],
-        max_command_age_ms=config['hardware_gateway'].get('max_command_age_ms', 250)
-    )
+    # Initialize motor controller backend
+    backend = config['control']['backend']
+    logger.info(f"Initializing motor controller backend: {backend}")
     
+    if backend == "uart":
+        # UART/dsPIC backend
+        app_state.motor_controller = UartMotorController(
+            port=config['uart']['port'],
+            baudrate=config['uart']['baudrate'],
+            command_rate_hz=config['hardware_gateway']['command_rate_hz'],
+            max_command_age_ms=config['hardware_gateway'].get('max_command_age_ms', 250)
+        )
+        # Keep hardware_gateway reference for backward compatibility
+        app_state.hardware_gateway = app_state.motor_controller.hardware_gateway
+        
+    elif backend == "pi_pwm":
+        # Pi GPIO PWM backend (L298N)
+        pwm_config = config['control']['pi_pwm']
+        app_state.motor_controller = PiPwmMotorController(
+            left_in1=pwm_config['left_in1'],
+            left_in2=pwm_config['left_in2'],
+            left_ena=pwm_config['left_ena'],
+            right_in3=pwm_config['right_in3'],
+            right_in4=pwm_config['right_in4'],
+            right_enb=pwm_config['right_enb'],
+            pwm_frequency=pwm_config['pwm_frequency'],
+            max_command_age_s=pwm_config['max_command_age_ms'] / 1000.0,
+            deadband=pwm_config.get('deadband', 0.05)
+        )
+        # No hardware_gateway in this mode
+        app_state.hardware_gateway = None
+    
+    else:
+        raise ValueError(f"Unknown motor controller backend: {backend}")
+    
+    # Initialize other services
     app_state.teleop_service = TeleopService(
         max_speed=config['teleop']['max_speed'],
         deadband=config['teleop']['deadband'],
@@ -111,7 +145,7 @@ async def startup_event():
     
     # Start services
     try:
-        await app_state.hardware_gateway.start()
+        await app_state.motor_controller.start()
         await app_state.teleop_service.start()
         await app_state.video_service.start()
         
@@ -135,8 +169,8 @@ async def shutdown_event():
         await app_state.video_service.stop()
     if app_state.teleop_service:
         await app_state.teleop_service.stop()
-    if app_state.hardware_gateway:
-        await app_state.hardware_gateway.stop()
+    if app_state.motor_controller:
+        await app_state.motor_controller.stop()
     
     logger.info("Shutdown complete")
 
@@ -160,21 +194,32 @@ async def api_root():
 @app.get("/api/v1/health", response_model=HealthResponse)
 async def get_health():
     """Get system health status"""
-    if not app_state.hardware_gateway:
+    if not app_state.motor_controller:
         raise HTTPException(status_code=503, detail="Services not initialized")
     
-    link_status = app_state.hardware_gateway.get_link_status()
-    last_telemetry = app_state.hardware_gateway.get_last_telemetry()
+    # Get status from motor controller (works with both backends)
+    motor_status = app_state.motor_controller.get_status()
+    link_status = app_state.motor_controller.get_link_status()
+    last_telemetry = app_state.motor_controller.get_telemetry()
     
     # Determine system state
     if last_telemetry and last_telemetry.has_fault:
         state = SystemState.FAULTED
-    elif link_status.connected:
+    elif motor_status.enabled:
         state = SystemState.ENABLED
     else:
         state = SystemState.STOPPED
     
     uptime = (datetime.now() - app_state.start_time).total_seconds()
+    
+    # Create link status if backend doesn't provide it
+    if link_status is None:
+        link_status = LinkStatus(
+            connected=motor_status.enabled,
+            frames_sent=0,
+            frames_received=0,
+            crc_errors=0
+        )
     
     system_health = SystemHealth(
         state=state,
@@ -325,8 +370,18 @@ async def telemetry_broadcaster():
             telemetry_dict = telemetry.dict()
             telemetry_dict['timestamp'] = telemetry.timestamp.isoformat()
             
-            # Also include link status (frames sent/received)
-            link_status_dict = app_state.hardware_gateway.link_status.dict()
+            # Get link status from motor controller (if available)
+            link_status = app_state.motor_controller.get_link_status()
+            if link_status:
+                link_status_dict = link_status.dict()
+            else:
+                # Pi PWM backend doesn't have link status
+                link_status_dict = {
+                    "connected": True,
+                    "frames_sent": 0,
+                    "frames_received": 0,
+                    "crc_errors": 0
+                }
             
             message = {
                 "type": "telemetry",

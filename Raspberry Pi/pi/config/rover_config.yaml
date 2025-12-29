@@ -21,6 +21,24 @@ hardware_gateway:
   watchdog_mirror_ms: 200  # Match dsPIC watchdog timeout
   max_command_age_ms: 250  # Don't send stale commands (ms)
 
+# Motor Control Backend Selection
+control:
+  backend: "pi_pwm"  # "uart" (dsPIC via UART) or "pi_pwm" (direct Pi GPIO)
+  
+  # Pi PWM Backend Settings (L298N)
+  pi_pwm:
+    # GPIO pin assignments (BCM numbering)
+    # Avoids GPIO14/15 (UART) for future dsPIC use
+    left_in1: 17   # Left motor direction 1
+    left_in2: 27   # Left motor direction 2
+    left_ena: 18   # Left motor PWM enable (hardware PWM capable)
+    right_in3: 23  # Right motor direction 1
+    right_in4: 24  # Right motor direction 2
+    right_enb: 13  # Right motor PWM enable (hardware PWM capable)
+    pwm_frequency: 1000  # PWM frequency in Hz
+    max_command_age_ms: 250  # Max command age before forcing stop
+    deadband: 0.05  # Input deadband (0-1)
+
 # Teleoperation Settings
 teleop:
   max_speed: 1.0  # Maximum normalized speed
