@@ -9,10 +9,11 @@ from datetime import datetime
 from typing import Dict, Optional
 import json
 import uuid
+from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from lib.models.messages import (
@@ -58,6 +59,11 @@ app = FastAPI(
     description="REST + WebSocket API for rover teleoperation",
     version="1.0.0"
 )
+
+# UI paths (serve `pi/ui/index.html` at "/")
+_PI_ROOT = Path(__file__).resolve().parents[2]   # .../Raspberry Pi/pi
+_UI_DIR = _PI_ROOT / "ui"
+_UI_INDEX = _UI_DIR / "index.html"
 
 # CORS middleware
 app.add_middleware(
@@ -140,12 +146,14 @@ async def shutdown_event():
 
 @app.get("/")
 async def root():
-    """Root endpoint"""
-    return {
-        "service": "Rover Control API",
-        "version": "1.0.0",
-        "status": "running"
-    }
+    """Serve the control UI (single-page HTML)"""
+    return FileResponse(_UI_INDEX)
+
+
+@app.get("/api")
+async def api_root():
+    """API root endpoint (JSON)"""
+    return {"service": "Rover Control API", "version": "1.0.0", "status": "running"}
 
 
 @app.get("/api/v1/health", response_model=HealthResponse)
@@ -337,8 +345,10 @@ async def telemetry_broadcaster():
 # STATIC FILES (UI)
 # ============================================================================
 
-# Serve static UI files (will be created in next step)
-# app.mount("/", StaticFiles(directory="../../ui/build", html=True), name="ui")
+# If you add additional UI assets later, expose them under /ui/.
+# (Today the UI is a single HTML file served at "/".)
+if _UI_DIR.exists():
+    app.mount("/ui", StaticFiles(directory=str(_UI_DIR)), name="ui")
 
 
 # ============================================================================

@@ -8,6 +8,7 @@ import logging
 from datetime import datetime
 from typing import Optional
 import av
+from fractions import Fraction
 
 try:
     from picamera2 import Picamera2
@@ -74,8 +75,8 @@ class CameraVideoTrack(VideoStreamTrack):
     
     async def recv(self):
         """Receive next video frame"""
-        # Calculate timing
-        pts = int((datetime.now() - self.start_time).total_seconds() * 90000)
+        # aiortc helper provides monotonically increasing pts/time_base
+        pts, time_base = await self.next_timestamp()
         
         if self.camera:
             # Capture from real camera
@@ -86,7 +87,7 @@ class CameraVideoTrack(VideoStreamTrack):
                 # Convert to VideoFrame
                 frame = VideoFrame.from_ndarray(frame_array, format="rgb24")
                 frame.pts = pts
-                frame.time_base = "1/90000"
+                frame.time_base = time_base
                 
                 self.frame_count += 1
                 
@@ -99,7 +100,7 @@ class CameraVideoTrack(VideoStreamTrack):
         # Generate dummy frame (color bars or test pattern)
         frame = self._generate_dummy_frame()
         frame.pts = pts
-        frame.time_base = "1/90000"
+        frame.time_base = time_base
         
         self.frame_count += 1
         
@@ -172,6 +173,14 @@ class VideoService:
         """
         pc = RTCPeerConnection()
         self.peer_connections[connection_id] = pc
+
+        @pc.on("iceconnectionstatechange")
+        async def on_ice_state_change():
+            logger.info(f"ICE state ({connection_id}): {pc.iceConnectionState}")
+
+        @pc.on("connectionstatechange")
+        async def on_conn_state_change():
+            logger.info(f"Peer connection state ({connection_id}): {pc.connectionState}")
         
         # Add video track
         video_track = CameraVideoTrack(
@@ -184,6 +193,25 @@ class VideoService:
         # Create offer
         offer = await pc.createOffer()
         await pc.setLocalDescription(offer)
+
+        # Wait for ICE gathering to complete so SDP includes candidates.
+        # Without this, many browsers will stay stuck at "waiting for video" on LAN.
+        async def wait_for_ice_gathering_complete(timeout_s: float = 5.0):
+            if pc.iceGatheringState == "complete":
+                return
+            done = asyncio.Event()
+
+            @pc.on("icegatheringstatechange")
+            async def on_ice_gathering_state_change():
+                if pc.iceGatheringState == "complete":
+                    done.set()
+
+            try:
+                await asyncio.wait_for(done.wait(), timeout=timeout_s)
+            except asyncio.TimeoutError:
+                logger.warning(f"ICE gathering did not complete within {timeout_s}s (state={pc.iceGatheringState})")
+
+        await wait_for_ice_gathering_complete()
         
         logger.info(f"Created WebRTC offer for connection: {connection_id}")
         
