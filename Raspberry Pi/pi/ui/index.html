@@ -214,7 +214,7 @@
     <main>
         <div class="video-panel">
             <div class="video-container">
-                <video id="videoElement" autoplay playsinline></video>
+                <video id="videoElement" autoplay playsinline muted></video>
                 <div id="videoPlaceholder" class="video-placeholder">Waiting for video...</div>
             </div>
         </div>
@@ -310,6 +310,16 @@
             peerConnection = new RTCPeerConnection({
                 iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
             });
+
+            // Ensure we negotiate receiving video even if browser is picky about transceivers.
+            peerConnection.addTransceiver('video', { direction: 'recvonly' });
+
+            peerConnection.oniceconnectionstatechange = () => {
+                console.log('ICE state:', peerConnection.iceConnectionState);
+            };
+            peerConnection.onconnectionstatechange = () => {
+                console.log('Peer state:', peerConnection.connectionState);
+            };
 
             peerConnection.ontrack = (event) => {
                 console.log('Received video track');

@@ -90,6 +90,10 @@ class CameraVideoTrack(VideoStreamTrack):
                 frame.time_base = time_base
                 
                 self.frame_count += 1
+
+                # Lightweight progress logging (every ~2 seconds at 30 fps)
+                if self.frame_count == 1 or (self.frame_count % 60) == 0:
+                    logger.info(f"Video frames produced: {self.frame_count}")
                 
                 return frame
             
