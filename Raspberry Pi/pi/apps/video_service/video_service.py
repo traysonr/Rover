@@ -6,7 +6,7 @@ WebRTC video streaming from Pi Camera
 import asyncio
 import logging
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Dict
 import av
 from fractions import Fraction
 
@@ -66,6 +66,12 @@ class CameraVideoTrack(VideoStreamTrack):
         
         except Exception as e:
             logger.error(f"Failed to initialize Picamera2: {e}")
+            # Best-effort cleanup in case Picamera2 partially initialized
+            try:
+                if getattr(self, "camera", None) is not None:
+                    self.camera.close()
+            except Exception:
+                pass
             self._init_dummy()
     
     def _init_dummy(self):
@@ -148,6 +154,21 @@ class CameraVideoTrack(VideoStreamTrack):
                 logger.info("Camera stopped")
             except Exception as e:
                 logger.error(f"Error stopping camera: {e}")
+            # IMPORTANT: fully release camera so subsequent reconnects can acquire it
+            try:
+                self.camera.close()
+                logger.info("Camera closed")
+            except Exception as e:
+                logger.error(f"Error closing camera: {e}")
+            finally:
+                self.camera = None
+
+        # Ensure aiortc track cleanup runs
+        try:
+            super().stop()
+        except Exception:
+            # Some aiortc versions may not require/allow stop() here; ignore.
+            pass
 
 
 class VideoService:
@@ -162,7 +183,8 @@ class VideoService:
         self.framerate = framerate
         
         # Peer connections
-        self.peer_connections = {}
+        self.peer_connections: Dict[str, RTCPeerConnection] = {}
+        self._video_tracks: Dict[str, CameraVideoTrack] = {}
         
         # Message bus
         self.bus = get_message_bus()
@@ -192,6 +214,7 @@ class VideoService:
             height=self.height,
             framerate=self.framerate
         )
+        self._video_tracks[connection_id] = video_track
         pc.addTrack(video_track)
         
         # Create offer
@@ -242,6 +265,14 @@ class VideoService:
     
     async def close_connection(self, connection_id: str):
         """Close peer connection"""
+        # Stop track first (releases camera immediately)
+        track = self._video_tracks.pop(connection_id, None)
+        if track is not None:
+            try:
+                track.stop()
+            except Exception as e:
+                logger.error(f"Error stopping video track for {connection_id}: {e}")
+
         pc = self.peer_connections.pop(connection_id, None)
         if pc:
             await pc.close()
@@ -259,6 +290,15 @@ class VideoService:
         # Close all peer connections
         for connection_id in list(self.peer_connections.keys()):
             await self.close_connection(connection_id)
+
+        # Best-effort cleanup if any tracks remain
+        for connection_id in list(self._video_tracks.keys()):
+            track = self._video_tracks.pop(connection_id, None)
+            if track is not None:
+                try:
+                    track.stop()
+                except Exception:
+                    pass
         
         logger.info("Video service stopped")
 
