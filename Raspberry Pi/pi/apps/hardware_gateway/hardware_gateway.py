@@ -29,11 +29,13 @@ class HardwareGateway:
     """
     
     def __init__(self, port: str, baudrate: int = 115200, 
-                 command_rate_hz: int = 50):
+                 command_rate_hz: int = 50,
+                 max_command_age_ms: int = 250):
         self.port = port
         self.baudrate = baudrate
         self.command_rate_hz = command_rate_hz
         self.command_period = 1.0 / command_rate_hz
+        self.max_command_age_s = max_command_age_ms / 1000.0
         
         # Serial port
         self.serial: Optional[serial.Serial] = None
@@ -58,6 +60,10 @@ class HardwareGateway:
         # Control
         self.running = False
         self._tasks = []
+        
+        # Stale command tracking
+        self._last_stale_warn_time = 0.0
+        self._stale_warn_interval = 2.0  # Warn at most every 2 seconds
     
     def open_serial(self):
         """Open serial port"""
@@ -137,9 +143,24 @@ class HardwareGateway:
                     
                     # Check command age
                     age = (datetime.now() - cmd.timestamp).total_seconds()
-                    if age > 0.1:  # 100ms max age
-                        logger.warning(f"Stale command (age={age:.3f}s), stopping")
-                        cmd = DriveCommand(left_speed=0.0, right_speed=0.0, estop=True)
+                    if age > self.max_command_age_s:
+                        # Throttle warning spam
+                        now = time.monotonic()
+                        if (now - self._last_stale_warn_time) >= self._stale_warn_interval:
+                            logger.warning(
+                                f"Stale command (age={age:.3f}s > {self.max_command_age_s:.3f}s), sending stop"
+                            )
+                            self._last_stale_warn_time = now
+                        
+                        # Send STOP (not E-STOP) - just zero speeds with enable still set
+                        # This prevents latching E-STOP on dsPIC
+                        cmd = DriveCommand(
+                            left_speed=0.0, 
+                            right_speed=0.0, 
+                            enable_request=True,
+                            estop=False,
+                            source="hardware_gateway_stale"
+                        )
                 else:
                     # No command - send stop
                     cmd = DriveCommand(left_speed=0.0, right_speed=0.0, enable_request=False)

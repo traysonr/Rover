@@ -251,6 +251,14 @@
                         <div class="telemetry-label">Command Age</div>
                         <div class="telemetry-value" id="cmdAge">--</div>
                     </div>
+                    <div class="telemetry-item">
+                        <div class="telemetry-label">Frames Sent</div>
+                        <div class="telemetry-value" id="framesSent">--</div>
+                    </div>
+                    <div class="telemetry-item">
+                        <div class="telemetry-label">Frames Received</div>
+                        <div class="telemetry-value" id="framesReceived">--</div>
+                    </div>
                 </div>
                 <div id="faultIndicator" style="display: none;" class="fault-indicator">
                     ⚠ FAULT ACTIVE
@@ -288,7 +296,7 @@
                 const message = JSON.parse(event.data);
                 
                 if (message.type === 'telemetry') {
-                    updateTelemetry(message.data);
+                    updateTelemetry(message.data, message.link_status);
                 } else if (message.type === 'webrtc_offer') {
                     await handleWebRTCOffer(message);
                 }
@@ -356,11 +364,17 @@
         }
 
         // Update telemetry display
-        function updateTelemetry(data) {
+        function updateTelemetry(data, linkStatus) {
             document.getElementById('leftMotor').textContent = `${(data.left_pwm / 100).toFixed(1)}%`;
             document.getElementById('rightMotor').textContent = `${(data.right_pwm / 100).toFixed(1)}%`;
             document.getElementById('voltage').textContent = `${(data.bus_voltage_mv / 1000).toFixed(2)}V`;
             document.getElementById('cmdAge').textContent = `${data.age_ms}ms`;
+
+            // Update link status if available
+            if (linkStatus) {
+                document.getElementById('framesSent').textContent = linkStatus.frames_sent;
+                document.getElementById('framesReceived').textContent = linkStatus.frames_received;
+            }
 
             // Show fault indicator if faults present
             const faultIndicator = document.getElementById('faultIndicator');

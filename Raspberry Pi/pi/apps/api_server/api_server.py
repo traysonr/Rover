@@ -93,7 +93,8 @@ async def startup_event():
     app_state.hardware_gateway = HardwareGateway(
         port=config['uart']['port'],
         baudrate=config['uart']['baudrate'],
-        command_rate_hz=config['hardware_gateway']['command_rate_hz']
+        command_rate_hz=config['hardware_gateway']['command_rate_hz'],
+        max_command_age_ms=config['hardware_gateway'].get('max_command_age_ms', 250)
     )
     
     app_state.teleop_service = TeleopService(
@@ -324,9 +325,13 @@ async def telemetry_broadcaster():
             telemetry_dict = telemetry.dict()
             telemetry_dict['timestamp'] = telemetry.timestamp.isoformat()
             
+            # Also include link status (frames sent/received)
+            link_status_dict = app_state.hardware_gateway.link_status.dict()
+            
             message = {
                 "type": "telemetry",
-                "data": telemetry_dict
+                "data": telemetry_dict,
+                "link_status": link_status_dict
             }
             
             # Broadcast to all connections

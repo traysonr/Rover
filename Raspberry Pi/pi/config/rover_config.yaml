@@ -19,7 +19,7 @@ hardware_gateway:
   command_rate_hz: 50  # Send commands at 50 Hz
   telemetry_timeout_ms: 500  # Declare link lost if no telemetry
   watchdog_mirror_ms: 200  # Match dsPIC watchdog timeout
-  max_command_age_ms: 100  # Don't send stale commands
+  max_command_age_ms: 250  # Don't send stale commands (ms)
 
 # Teleoperation Settings
 teleop:
